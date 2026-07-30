@@ -315,7 +315,7 @@ export default function Home() {
     window.setTimeout(() => context.close(), 700);
   }
 
-  function scrollToSection(section: "play" | "brawlers" | "missions") {
+  function scrollToSection(section: "play" | "brawlers" | "missions" | "profile") {
     setActiveNav(section);
     document.getElementById(section)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -427,6 +427,7 @@ export default function Home() {
           <span className="season-label">BRAWL LAB · SEASON 1</span>
           <h1>BUILD YOUR<br /><em>DREAM TEAM</em></h1>
           <p>Scegli tre brawler reali. Scopri se la tua squadra può dominare la modalità del giorno.</p>
+          <button className="profile-jump" onClick={() => scrollToSection("profile")}>👤 APRI IL MIO PROFILO</button>
           <div className="xp-row">
             <div><span>LEVEL {level}</span><strong>{levelProgress}/500 XP</strong></div>
             <div className="xp-track"><i style={{ width: `${(levelProgress / 500) * 100}%` }} /></div>
