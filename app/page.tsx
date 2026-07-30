@@ -36,6 +36,67 @@ type ApiBrawler = {
   starPowers: Ability[];
 };
 
+type PlayerProfile = {
+  status?: string;
+  tag: string;
+  name?: string;
+  trophies?: number;
+  highestTrophies?: number;
+  expLevel?: number;
+  "3vs3Victories"?: number;
+  soloVictories?: number;
+  duoVictories?: number;
+  club?: { name?: string };
+  brawlers?: Array<{ id: number; name: string; power: number; rank: number; trophies: number; highestTrophies: number }>;
+  updatedAt?: string;
+};
+
+const roleLabels: Record<string, string> = {
+  Assassin: "Assassino",
+  Artillery: "Artigliere",
+  Controller: "Controllore",
+  "Damage Dealer": "Assaltatore",
+  Marksman: "Tiratore scelto",
+  Support: "Supporto",
+  Tank: "Tank",
+  Unknown: "Ruolo speciale",
+};
+
+const rarityLabels: Record<string, string> = {
+  "Starting Brawler": "Brawler iniziale",
+  "Trophy Road": "Via dei trofei",
+  Rare: "Raro",
+  "Super Rare": "Super raro",
+  Epic: "Epico",
+  Mythic: "Mitico",
+  Legendary: "Leggendario",
+  "Ultra Legendary": "Ultra leggendario",
+  Chromatic: "Cromatico",
+  Unknown: "Rarità speciale",
+};
+
+function italianRole(role: string) {
+  return roleLabels[role] || role;
+}
+
+function italianRarity(rarity: string) {
+  return rarityLabels[rarity] || rarity;
+}
+
+function italianBrawlerDescription(name: string, role: string) {
+  const descriptions: Record<string, string> = {
+    Assassin: `${name} è un assassino rapido: cerca il momento giusto per avvicinarsi, eliminare il bersaglio e allontanarsi prima della risposta nemica.`,
+    Artillery: `${name} è un artigliere che colpisce oltre gli ostacoli e controlla intere zone della mappa mantenendosi a distanza.`,
+    Controller: `${name} è specializzato nel controllo: limita i movimenti avversari e crea spazio utile per tutta la squadra.`,
+    "Damage Dealer": `${name} è un assaltatore capace di infliggere molti danni. Rende al meglio quando trova la distanza corretta per i suoi colpi.`,
+    Marksman: `${name} è un tiratore scelto: premia precisione, distanza e scelta attenta del bersaglio.`,
+    Support: `${name} è un brawler di supporto che potenzia o protegge gli alleati e rende il team più resistente.`,
+    Tank: `${name} è un tank resistente, ideale per avanzare, assorbire danni e conquistare gli spazi più importanti.`,
+    Unknown: `${name} possiede uno stile speciale che combina più ruoli. Studia attacco, Super e gadget per sfruttarlo al meglio.`,
+  };
+  return descriptions[role] || descriptions.Unknown;
+}
+
 const fallbackBrawlers: Brawler[] = [
   { id: 16000000, name: "Shelly", role: "Damage Dealer", rarity: "Starting Brawler", image: "https://cdn.brawlify.com/brawlers/borderless/16000000.png", color: "#8d5cff", power: 88, control: 66, survival: 72, mobility: 62 },
   { id: 16000005, name: "Spike", role: "Damage Dealer", rarity: "Legendary", image: "https://cdn.brawlify.com/brawlers/borderless/16000005.png", color: "#ffd92f", power: 91, control: 92, survival: 42, mobility: 58 },
@@ -75,15 +136,13 @@ const modes = [
   },
 ];
 
-function cleanAbility(ability: Ability): Ability {
+function cleanAbility(ability: Ability, kind: "gadget" | "starPower"): Ability {
   return {
     ...ability,
     imageUrl: ability.imageUrl.replace("/borderless/", "/regular/"),
-    description: ability.description
-      .replace(/<![^>]+>/g, "un bonus")
-      .replace(/\bx\b/gi, "un valore potenziato")
-      .replace(/\s+/g, " ")
-      .trim(),
+    description: kind === "gadget"
+      ? `${ability.name} è un gadget attivo: usalo nel momento giusto per ottenere un vantaggio immediato durante lo scontro.`
+      : `${ability.name} è un'abilità stellare passiva che migliora lo stile di gioco del brawler per tutta la partita.`,
   };
 }
 
@@ -104,6 +163,9 @@ export default function Home() {
   const [viewedIds, setViewedIds] = useState<number[]>([]);
   const [claimedMissions, setClaimedMissions] = useState<string[]>([]);
   const [soundOn, setSoundOn] = useState(true);
+  const [player, setPlayer] = useState<PlayerProfile | null>(null);
+  const [playerTag, setPlayerTag] = useState("");
+  const [tagDraft, setTagDraft] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem("brawllab-v2");
@@ -121,6 +183,21 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("brawllab-v2", JSON.stringify({ xp, wins, claimedMissions }));
   }, [xp, wins, claimedMissions]);
+
+  useEffect(() => {
+    const savedTag = localStorage.getItem("brawllab-player-tag") || "";
+    setPlayerTag(savedTag);
+    setTagDraft(savedTag);
+  }, []);
+
+  function savePlayerTag() {
+    const normalized = `#${tagDraft.toUpperCase().replace(/[^0289PYLQGRJCUV]/g, "")}`;
+    if (normalized.length < 4) return;
+    localStorage.setItem("brawllab-player-tag", normalized);
+    setPlayerTag(normalized);
+    setTagDraft(normalized);
+    setPlayer({ status: "pending", tag: normalized });
+  }
 
   useEffect(() => {
     let active = true;
@@ -158,9 +235,9 @@ export default function Home() {
               control: Math.max(30, Math.min(99, base[1] - variation)),
               survival: Math.max(30, Math.min(99, base[2] + Math.round(variation / 2))),
               mobility: Math.max(30, Math.min(99, base[3] - Math.round(variation / 2))),
-              description: item.description,
-              gadgets: (item.gadgets || []).map(cleanAbility),
-              starPowers: (item.starPowers || []).map(cleanAbility),
+              description: italianBrawlerDescription(item.name, role),
+              gadgets: (item.gadgets || []).map((ability) => cleanAbility(ability, "gadget")),
+              starPowers: (item.starPowers || []).map((ability) => cleanAbility(ability, "starPower")),
             };
           });
         setCatalog(normalized);
@@ -394,7 +471,7 @@ export default function Home() {
                   {brawler ? (
                     <>
                       <img src={brawler.image} alt={brawler.name} />
-                      <div><strong>{brawler.name}</strong><span>{brawler.role}</span></div>
+              <div><strong>{brawler.name}</strong><span>{italianRole(brawler.role)}</span></div>
                       <i>×</i>
                     </>
                   ) : (
@@ -459,8 +536,8 @@ export default function Home() {
       <section className="roster-section" id="brawlers">
         <div className="roster-head">
           <div>
-            <span>BRAWLER CODEX · {catalog.length} PERSONAGGI</span>
-            <h2>ALL BRAWLERS</h2>
+            <span>ENCICLOPEDIA BRAWLER · {catalog.length} PERSONAGGI</span>
+            <h2>TUTTI I BRAWLER</h2>
             <p>Clicca una scheda per scoprire abilità, gadget e Hypercharge.</p>
           </div>
           <label className="brawler-search">
@@ -468,7 +545,7 @@ export default function Home() {
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca brawler..." aria-label="Cerca brawler" />
           </label>
           <div className="role-filter">
-            {roles.map((role) => <button key={role} className={role === filter ? "active" : ""} onClick={() => setFilter(role)}>{role}</button>)}
+            {roles.map((role) => <button key={role} className={role === filter ? "active" : ""} onClick={() => setFilter(role)}>{role === "Tutti" ? role : italianRole(role)}</button>)}
           </div>
         </div>
         {catalogLoading && <div className="catalog-status"><span className="loader-star">★</span><strong>Caricamento del Brawler Codex…</strong></div>}
@@ -484,11 +561,11 @@ export default function Home() {
               tabIndex={0}
               style={{ "--brawler-color": brawler.color } as React.CSSProperties}
             >
-              <span className="rarity">{brawler.rarity}</span>
+              <span className="rarity">{italianRarity(brawler.rarity)}</span>
               <div className="portrait"><div className="rays" /><img src={brawler.image} alt={brawler.name} /></div>
               <div className="nameplate">
                 <strong>{brawler.name}</strong>
-                <span>{brawler.role}</span>
+                <span>{italianRole(brawler.role)}</span>
                 <small>APRI SCHEDA →</small>
               </div>
               <button
@@ -505,6 +582,39 @@ export default function Home() {
           ))}
         </div>
         {!catalogLoading && visible.length === 0 && <div className="empty-search">Nessun brawler trovato. Prova un altro nome.</div>}
+      </section>
+
+      <section className="player-section" id="profile">
+        <div className="player-panel">
+          <div className="player-panel-head">
+            <div><span>PROFILO BRAWL STARS</span><h2>{player?.name || "IL MIO PROFILO"}</h2><p>{playerTag ? <>Tag salvato sul dispositivo: <strong>{playerTag}</strong></> : "Collega il tuo tag giocatore"}</p></div>
+            <div className="player-avatar">★</div>
+          </div>
+          {!playerTag ? (
+            <div className="profile-connect">
+              <label><span>TAG GIOCATORE</span><input value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder="#XXXXXXXX" aria-label="Tag giocatore Brawl Stars" /></label>
+              <button onClick={savePlayerTag}>SALVA SUL TELEFONO</button>
+              <p>Il tag resta esclusivamente in questo browser e non viene pubblicato online.</p>
+            </div>
+          ) : player?.status === "ready" || player?.trophies !== undefined ? (
+            <>
+              <div className="profile-stats">
+                <article><span>🏆</span><strong>{player.trophies?.toLocaleString("it-IT")}</strong><small>COPPE ATTUALI</small></article>
+                <article><span>👑</span><strong>{player.highestTrophies?.toLocaleString("it-IT")}</strong><small>RECORD COPPE</small></article>
+                <article><span>⚡</span><strong>{player.expLevel}</strong><small>LIVELLO ESPERIENZA</small></article>
+                <article><span>3V3</span><strong>{player["3vs3Victories"]?.toLocaleString("it-IT")}</strong><small>VITTORIE</small></article>
+              </div>
+              <div className="profile-extra">
+                <span>🎮 Solo: <strong>{player.soloVictories || 0}</strong></span>
+                <span>🤝 Duo: <strong>{player.duoVictories || 0}</strong></span>
+                <span>🛡️ Club: <strong>{player.club?.name || "Nessun club"}</strong></span>
+                <span>⭐ Brawler sbloccati: <strong>{player.brawlers?.length || 0}</strong></span>
+              </div>
+            </>
+          ) : (
+            <div className="profile-pending"><span>🔗</span><div><strong>TAG SALVATO IN SICUREZZA</strong><p>Il profilo è predisposto. Il prossimo passaggio sarà il collegamento protetto con l’API ufficiale per mostrare coppe e progressi senza rendere pubblico il tag.</p></div></div>
+          )}
+        </div>
       </section>
 
       <section className="missions-section" id="missions">
@@ -539,16 +649,16 @@ export default function Home() {
                 onError={(event) => { event.currentTarget.src = openBrawler.image; }}
               />
               <div className="sheet-identity">
-                <span>{openBrawler.rarity} · {openBrawler.role}</span>
+                <span>{italianRarity(openBrawler.rarity)} · {italianRole(openBrawler.role)}</span>
                 <h2 id="brawler-title">{openBrawler.name}</h2>
-                <p>{openBrawler.description || `${openBrawler.name} è pronto a entrare nell'arena.`}</p>
+                <p>{openBrawler.description || italianBrawlerDescription(openBrawler.name, openBrawler.role)}</p>
               </div>
             </div>
 
             <div className="ability-showcase">
               <article className="ability-card attack-card">
                 <div className="ability-visual attack-motion"><span>●</span><i /><i /><i /></div>
-                <div><span>ATTACCO</span><strong>Attacco principale</strong><p>Il colpo base di {openBrawler.name}, modellato sul suo stile da {openBrawler.role.toLowerCase()}.</p></div>
+                <div><span>ATTACCO</span><strong>Attacco principale</strong><p>Il colpo base di {openBrawler.name}, progettato per il suo stile da {italianRole(openBrawler.role).toLowerCase()}.</p></div>
               </article>
               <article className="ability-card super-card">
                 <div className="ability-visual super-motion"><span>★</span><i /></div>
